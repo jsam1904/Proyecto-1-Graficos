@@ -58,7 +58,7 @@ pub fn get_levels() -> Vec<Level> {
             name: "Nivel 1: Los Pasillos",
             player_start: (2.5, 1.5),
             player_start_angle: 0.0,
-            goal_tile: (13, 7),
+            goal_tile: (14, 7),
         },
         Level {
             grid: LEVEL_2,

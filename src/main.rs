@@ -3,12 +3,16 @@ mod player;
 mod raycasting;
 mod sprite;
 mod state;
+mod textures;
+mod weapon;
 
 use map::get_levels;
 use player::Player;
 use raylib::prelude::*;
 use sprite::{render_sprites, AnimatedSprite};
 use state::GameState;
+use textures::{CreatureTextures, WallTextures};
+use weapon::Weapon;
 
 const SCREEN_W: i32 = 960;
 const SCREEN_H: i32 = 540;
@@ -38,13 +42,9 @@ fn main() {
     let mut sprites: Vec<AnimatedSprite> = spawn_sprites_for_level(current_level);
     let mut zbuffer: Vec<f32> = vec![1e30; SCREEN_W as usize];
 
-    // TODO música de fondo: cargar con RaylibAudio, ej.
-    // let audio = RaylibAudio::init_audio_device().unwrap();
-    // let music = audio.new_music("assets/sounds/theme.ogg").unwrap();
-    // music.play_stream(); y en cada frame: music.update_stream();
-    // (Recuerda: -5 pts si es de Taylor Swift)
-
-    let mut mouse_captured = false;
+    let wall_textures = WallTextures::load(&mut rl, &thread);
+    let creature_textures = CreatureTextures::load(&mut rl, &thread);
+    let mut weapon = Weapon::new(&mut rl, &thread);
 
     while !rl.window_should_close() {
         let dt = rl.get_frame_time();
@@ -74,38 +74,38 @@ fn main() {
                     );
                     sprites = spawn_sprites_for_level(current_level);
                     state = GameState::Playing;
-                    rl.disable_cursor();
-                    mouse_captured = true;
                 }
             }
             GameState::Playing => {
-                if !mouse_captured {
-                    rl.disable_cursor();
-                    mouse_captured = true;
-                }
                 if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
-                    rl.enable_cursor();
-                    mouse_captured = false;
                     state = GameState::LevelSelect;
                 }
 
                 update_playing(&mut rl, &mut player, &levels[current_level].grid, dt);
 
+                let is_moving = rl.is_key_down(KeyboardKey::KEY_W)
+                    || rl.is_key_down(KeyboardKey::KEY_S)
+                    || rl.is_key_down(KeyboardKey::KEY_A)
+                    || rl.is_key_down(KeyboardKey::KEY_D);
+                weapon.update(dt, is_moving);
+
                 for s in sprites.iter_mut() {
                     s.update(dt);
                 }
 
+                // Disparo: click izquierdo o SPACE. Revisa el sprite más cercano
+                // dentro de un cono angular pequeño frente al jugador.
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)
                     || rl.is_key_pressed(KeyboardKey::KEY_SPACE)
                 {
                     try_shoot(&player, &mut sprites);
+                    weapon.trigger_shot();
                     // TODO efecto de sonido de disparo aquí (sound.play())
                 }
 
+                // Condición de victoria: pisar la casilla meta del nivel
                 let (tx, ty) = player.tile();
                 if (tx, ty) == levels[current_level].goal_tile {
-                    rl.enable_cursor();
-                    mouse_captured = false;
                     state = GameState::Success;
                 }
             }
@@ -130,11 +130,14 @@ fn main() {
                     SCREEN_W,
                     SCREEN_H,
                     &mut zbuffer,
+                    &wall_textures,
                 );
-                render_sprites(&mut d, &player, &sprites, &zbuffer, SCREEN_W, SCREEN_H);
+                render_sprites(&mut d, &player, &sprites, &zbuffer, SCREEN_W, SCREEN_H, &creature_textures);
                 raycasting::render_minimap(&mut d, &player, &levels[current_level].grid, SCREEN_W);
+                weapon.draw(&mut d, SCREEN_W, SCREEN_H);
+                weapon::draw_crosshair(&mut d, SCREEN_W, SCREEN_H);
                 d.draw_fps(10, 10);
-                d.draw_text("ESC: menu | WASD: mover | Mouse: rotar | Click/Espacio: disparar", 10, SCREEN_H - 24, 16, Color::WHITE);
+                d.draw_text("ESC: menu | WASD: mover | Flechas: rotar | Click/Espacio: disparar", 10, SCREEN_H - 24, 16, Color::WHITE);
             }
             GameState::Success => draw_success(&mut d, &levels[current_level].name),
         }
@@ -147,17 +150,20 @@ fn update_playing(
     grid: &[[u8; map::MAP_WIDTH]; map::MAP_HEIGHT],
     dt: f32,
 ) {
-    // --- Rotación horizontal con mouse ---
-    let mouse_delta = rl.get_mouse_delta();
-    player.rotate(mouse_delta.x * player.rot_speed);
+    // --- Rotación con flechas izquierda/derecha ---
+    if rl.is_key_down(KeyboardKey::KEY_LEFT) {
+        player.rotate(-player.rot_speed * dt);
+    }
+    if rl.is_key_down(KeyboardKey::KEY_RIGHT) {
+        player.rotate(player.rot_speed * dt);
+    }
 
     // --- Movimiento WASD con colisión (no atraviesa paredes) ---
     let (dir_x, dir_y) = player.dir();
-    let (strafe_x, strafe_y) = (-dir_y, dir_x); // perpendicular
+    let (strafe_x, strafe_y) = (-dir_y, dir_x);
 
     let mut move_x = 0.0;
     let mut move_y = 0.0;
-
     let speed = player.move_speed * dt;
 
     if rl.is_key_down(KeyboardKey::KEY_W) {
@@ -181,7 +187,7 @@ fn update_playing(
 }
 
 fn try_shoot(player: &Player, sprites: &mut Vec<AnimatedSprite>) {
-    const SHOOT_CONE: f32 = 0.15; // radianes de tolerancia
+    const SHOOT_CONE: f32 = 0.15;
     const MAX_RANGE: f32 = 10.0;
 
     let mut best: Option<(usize, f32)> = None;
@@ -210,7 +216,7 @@ fn try_shoot(player: &Player, sprites: &mut Vec<AnimatedSprite>) {
         }
     }
     if let Some((i, _)) = best {
-        sprites[i].alive = false; // TODO: aquí puedes restar vida, dar puntos, etc.
+        sprites[i].alive = false;
     }
 }
 

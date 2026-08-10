@@ -7,7 +7,8 @@ pub const FOV: f32 = std::f32::consts::PI / 3.0;
 pub struct RayHit {
     pub distance: f32,
     pub wall_type: u8,
-    pub side: u8, 
+    pub side: u8,
+    pub wall_x: f32,
 }
 
 pub fn wall_color(wall_type: u8, side: u8) -> Color {
@@ -16,7 +17,7 @@ pub fn wall_color(wall_type: u8, side: u8) -> Color {
         2 => Color::new(60, 130, 180, 255),
         3 => Color::new(90, 170, 90, 255),
         4 => Color::new(200, 170, 60, 255),
-        _ => Color::new(150, 150, 150, 255), 
+        _ => Color::new(150, 150, 150, 255),
     };
     if side == 1 {
         Color::new(
@@ -30,7 +31,12 @@ pub fn wall_color(wall_type: u8, side: u8) -> Color {
     }
 }
 
-pub fn cast_ray(px: f32, py: f32, ray_angle: f32, grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],) -> RayHit {
+pub fn cast_ray(
+    px: f32,
+    py: f32,
+    ray_angle: f32,
+    grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
+) -> RayHit {
     let ray_dir_x = ray_angle.cos();
     let ray_dir_y = ray_angle.sin();
 
@@ -79,28 +85,48 @@ pub fn cast_ray(px: f32, py: f32, ray_angle: f32, grid: &[[u8; MAP_WIDTH]; MAP_H
             } else {
                 (map_y as f32 - py + (1 - step_y) as f32 / 2.0) / ray_dir_y
             };
+            let perp_dist = perp_dist.max(0.0001);
+
+            let mut wall_x = if side == 0 {
+                py + perp_dist * ray_dir_y
+            } else {
+                px + perp_dist * ray_dir_x
+            };
+            wall_x -= wall_x.floor();
+
             return RayHit {
-                distance: perp_dist.max(0.0001),
+                distance: perp_dist,
                 wall_type,
                 side,
+                wall_x,
             };
         }
     }
 }
 
-pub fn render_scene(d: &mut RaylibDrawHandle, player: &Player, grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT], screen_w: i32, screen_h: i32, zbuffer: &mut Vec<f32>,) {
-    d.draw_rectangle(0, 0, screen_w, screen_h / 2, Color::new(40, 40, 50, 255));
+pub fn render_scene(
+    d: &mut RaylibDrawHandle,
+    player: &Player,
+    grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
+    screen_w: i32,
+    screen_h: i32,
+    zbuffer: &mut Vec<f32>,
+    textures: &crate::textures::WallTextures,
+) {
+    d.draw_rectangle(0, 0, screen_w, screen_h / 2, Color::new(35, 35, 45, 255));
     d.draw_rectangle(
         0,
         screen_h / 2,
         screen_w,
         screen_h / 2,
-        Color::new(60, 60, 60, 255),
+        Color::new(50, 48, 46, 255),
     );
 
     for col in 0..screen_w {
         let camera_x = 2.0 * col as f32 / screen_w as f32 - 1.0;
         let ray_angle = player.angle + camera_x * (FOV / 2.0);
+        let ray_dir_x = ray_angle.cos();
+        let ray_dir_y = ray_angle.sin();
 
         let hit = cast_ray(player.x, player.y, ray_angle, grid);
 
@@ -111,16 +137,30 @@ pub fn render_scene(d: &mut RaylibDrawHandle, player: &Player, grid: &[[u8; MAP_
         let draw_start = (-line_height / 2 + screen_h / 2).max(0);
         let draw_end = (line_height / 2 + screen_h / 2).min(screen_h - 1);
 
-        let color = wall_color(hit.wall_type, hit.side);
-        let shade = (1.0 - (corrected_dist / 12.0).min(0.85)).max(0.15);
-        let shaded = Color::new(
-            (color.r as f32 * shade) as u8,
-            (color.g as f32 * shade) as u8,
-            (color.b as f32 * shade) as u8,
-            255,
-        );
+        let texture = textures.get(hit.wall_type);
+        let tex_w = texture.width as f32;
+        let tex_h = texture.height as f32;
 
-        d.draw_line(col, draw_start, col, draw_end, shaded);
+        let mut tex_x = (hit.wall_x * tex_w) as i32;
+        let flip = (hit.side == 0 && ray_dir_x > 0.0) || (hit.side == 1 && ray_dir_y < 0.0);
+        if flip {
+            tex_x = (tex_w as i32 - tex_x - 1).max(0);
+        }
+        tex_x = tex_x.clamp(0, tex_w as i32 - 1);
+
+        let dist_shade = (1.0 - (corrected_dist / 12.0).min(0.8)).max(0.2);
+        let side_shade = if hit.side == 1 { 0.7 } else { 1.0 };
+        let v = (255.0 * dist_shade * side_shade) as u8;
+        let tint = Color::new(v, v, v, 255);
+
+        let src = Rectangle::new(tex_x as f32, 0.0, 1.0, tex_h);
+        let dest = Rectangle::new(
+            col as f32,
+            draw_start as f32,
+            1.0,
+            (draw_end - draw_start).max(1) as f32,
+        );
+        d.draw_texture_pro(texture, src, dest, Vector2::new(0.0, 0.0), 0.0, tint);
 
         if (col as usize) < zbuffer.len() {
             zbuffer[col as usize] = corrected_dist;
@@ -128,7 +168,12 @@ pub fn render_scene(d: &mut RaylibDrawHandle, player: &Player, grid: &[[u8; MAP_
     }
 }
 
-pub fn render_minimap(d: &mut RaylibDrawHandle, player: &Player, grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT], screen_w: i32,) {
+pub fn render_minimap(
+    d: &mut RaylibDrawHandle,
+    player: &Player,
+    grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
+    screen_w: i32,
+) {
     let tile_px = 6;
     let margin = 12;
     let map_w = MAP_WIDTH as i32 * tile_px;

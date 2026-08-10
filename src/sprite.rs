@@ -1,11 +1,13 @@
 use crate::player::Player;
 use crate::raycasting::FOV;
+use crate::textures::CreatureTextures;
 use raylib::prelude::*;
+
+const FRAME_COUNT: usize = 4;
 
 pub struct AnimatedSprite {
     pub x: f32,
     pub y: f32,
-    pub frame_colors: Vec<Color>,
     pub frame_index: usize,
     pub frame_timer: f32,
     pub frame_duration: f32,
@@ -17,15 +19,9 @@ impl AnimatedSprite {
         Self {
             x,
             y,
-            frame_colors: vec![
-                Color::new(230, 90, 90, 255),
-                Color::new(240, 130, 90, 255),
-                Color::new(230, 90, 90, 255),
-                Color::new(200, 60, 60, 255),
-            ],
             frame_index: 0,
             frame_timer: 0.0,
-            frame_duration: 0.18,
+            frame_duration: 0.28,
             alive: true,
         }
     }
@@ -34,7 +30,7 @@ impl AnimatedSprite {
         self.frame_timer += dt;
         if self.frame_timer >= self.frame_duration {
             self.frame_timer = 0.0;
-            self.frame_index = (self.frame_index + 1) % self.frame_colors.len();
+            self.frame_index = (self.frame_index + 1) % FRAME_COUNT;
         }
     }
 }
@@ -46,6 +42,7 @@ pub fn render_sprites(
     zbuffer: &[f32],
     screen_w: i32,
     screen_h: i32,
+    creature_textures: &CreatureTextures,
 ) {
     let mut with_dist: Vec<(f32, &AnimatedSprite)> = sprites
         .iter()
@@ -86,27 +83,32 @@ pub fn render_sprites(
         }
 
         let sprite_screen_size = (screen_h as f32 / corrected_dist).min(2000.0);
-        let screen_x =
-            (screen_w as f32 / 2.0) * (1.0 + angle_to_sprite / (FOV / 2.0));
+        let screen_x = (screen_w as f32 / 2.0) * (1.0 + angle_to_sprite / (FOV / 2.0));
 
         let half = sprite_screen_size / 2.0;
         let start_x = (screen_x - half) as i32;
         let end_x = (screen_x + half) as i32;
         let start_y = (screen_h as f32 / 2.0 - half) as i32;
 
-        let color = sprite.frame_colors[sprite.frame_index];
+        let texture = &creature_textures.frames[sprite.frame_index];
+        let tex_w = texture.width as f32;
+        let tex_h = texture.height as f32;
 
+        let shade = (1.0 - (corrected_dist / 12.0).min(0.6)).max(0.4);
+        let v = (255.0 * shade) as u8;
+        let tint = Color::new(v, v, v, 255);
+
+        let draw_w = (end_x - start_x).max(1);
         for col in start_x.max(0)..end_x.min(screen_w) {
             if (col as usize) < zbuffer.len() && corrected_dist >= zbuffer[col as usize] {
                 continue;
             }
-            d.draw_line(
-                col,
-                start_y.max(0),
-                col,
-                (start_y as f32 + sprite_screen_size) as i32,
-                color,
-            );
+            let local_x = col - start_x;
+            let tex_x = ((local_x as f32 / draw_w as f32) * tex_w).clamp(0.0, tex_w - 1.0);
+
+            let src = Rectangle::new(tex_x, 0.0, 1.0, tex_h);
+            let dest = Rectangle::new(col as f32, start_y as f32, 1.0, sprite_screen_size);
+            d.draw_texture_pro(texture, src, dest, Vector2::new(0.0, 0.0), 0.0, tint);
         }
     }
 }
