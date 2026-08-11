@@ -10,3 +10,9 @@ gif = "0.13"
 [profile.release]
 opt-level = 3
 lto = true
+
+[profile.dev]
+opt-level = 2
+
+[profile.dev.package."*"]
+opt-level = 3
