@@ -1,7 +1,8 @@
+use crate::framebuffer::Framebuffer;
 use crate::player::Player;
 use crate::raycasting::FOV;
 use crate::textures::CreatureTextures;
-use raylib::prelude::*;
+use raylib::prelude::Color;
 
 const FRAME_COUNT: usize = 4;
 
@@ -60,15 +61,16 @@ impl AnimatedSprite {
     }
 }
 
-pub fn render_sprites(
-    d: &mut RaylibDrawHandle,
+pub fn render_sprites_fb(
+    fb: &mut Framebuffer,
     player: &Player,
     sprites: &[AnimatedSprite],
     zbuffer: &[f32],
-    screen_w: i32,
-    screen_h: i32,
     creature_textures: &CreatureTextures,
 ) {
+    let screen_w = fb.width;
+    let screen_h = fb.height;
+
     let mut with_dist: Vec<(f32, &AnimatedSprite)> = sprites
         .iter()
         .filter(|s| s.alive)
@@ -114,26 +116,39 @@ pub fn render_sprites(
         let start_x = (screen_x - half) as i32;
         let end_x = (screen_x + half) as i32;
         let start_y = (screen_h as f32 / 2.0 - half) as i32;
+        let end_y = start_y + sprite_screen_size as i32;
 
         let texture = &creature_textures.frames[sprite.frame_index];
-        let tex_w = texture.width as f32;
-        let tex_h = texture.height as f32;
+        let tex_w = texture.width;
+        let tex_h = texture.height;
 
         let shade = (1.0 - (corrected_dist / 12.0).min(0.6)).max(0.4);
-        let v = (255.0 * shade) as u8;
-        let tint = Color::new(v, v, v, 255);
 
         let draw_w = (end_x - start_x).max(1);
+        let draw_h = (end_y - start_y).max(1);
+
         for col in start_x.max(0)..end_x.min(screen_w) {
             if (col as usize) < zbuffer.len() && corrected_dist >= zbuffer[col as usize] {
-                continue; // hay una pared más cerca en esta columna: ocluido
+                continue;
             }
             let local_x = col - start_x;
-            let tex_x = ((local_x as f32 / draw_w as f32) * tex_w).clamp(0.0, tex_w - 1.0);
+            let tex_x = ((local_x as f32 / draw_w as f32) * tex_w as f32) as i32;
 
-            let src = Rectangle::new(tex_x, 0.0, 1.0, tex_h);
-            let dest = Rectangle::new(col as f32, start_y as f32, 1.0, sprite_screen_size);
-            d.draw_texture_pro(texture, src, dest, Vector2::new(0.0, 0.0), 0.0, tint);
+            for row in start_y.max(0)..end_y.min(screen_h) {
+                let local_y = row - start_y;
+                let tex_y = ((local_y as f32 / draw_h as f32) * tex_h as f32) as i32;
+                let c = texture.get(tex_x, tex_y);
+                if c.a == 0 {
+                    continue;
+                }
+                let shaded = Color::new(
+                    (c.r as f32 * shade) as u8,
+                    (c.g as f32 * shade) as u8,
+                    (c.b as f32 * shade) as u8,
+                    255,
+                );
+                fb.set_pixel(col, row, shaded);
+            }
         }
     }
 }

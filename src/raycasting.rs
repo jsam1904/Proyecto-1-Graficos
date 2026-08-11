@@ -1,8 +1,10 @@
+use crate::framebuffer::Framebuffer;
 use crate::map::{wall_type_at, MAP_HEIGHT, MAP_WIDTH};
 use crate::player::Player;
-use raylib::prelude::*;
+use crate::textures::WallTextures;
+use raylib::prelude::Color;
 
-pub const FOV: f32 = std::f32::consts::PI / 3.0;
+pub const FOV: f32 = std::f32::consts::PI / 3.0; // 60 grados
 
 pub struct RayHit {
     pub distance: f32,
@@ -104,21 +106,22 @@ pub fn cast_ray(
     }
 }
 
-pub fn render_scene(
-    d: &mut RaylibDrawHandle,
+pub fn render_scene_fb(
+    fb: &mut Framebuffer,
     player: &Player,
     grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
-    screen_w: i32,
-    screen_h: i32,
     zbuffer: &mut Vec<f32>,
-    textures: &crate::textures::WallTextures,
+    textures: &WallTextures,
 ) {
-    d.draw_rectangle(0, 0, screen_w, screen_h / 2, Color::new(35, 35, 45, 255));
-    d.draw_rectangle(
+    let screen_w = fb.width;
+    let screen_h = fb.height;
+
+    fb.fill_rect(0, 0, screen_w, screen_h / 2, Color::new(35, 35, 45, 255));
+    fb.fill_rect(
         0,
         screen_h / 2,
         screen_w,
-        screen_h / 2,
+        screen_h - screen_h / 2,
         Color::new(50, 48, 46, 255),
     );
 
@@ -136,31 +139,35 @@ pub fn render_scene(
         let line_height = (screen_h as f32 / corrected_dist) as i32;
         let draw_start = (-line_height / 2 + screen_h / 2).max(0);
         let draw_end = (line_height / 2 + screen_h / 2).min(screen_h - 1);
+        let visible_height = (draw_end - draw_start).max(1);
 
         let texture = textures.get(hit.wall_type);
-        let tex_w = texture.width as f32;
-        let tex_h = texture.height as f32;
+        let tex_w = texture.width;
+        let tex_h = texture.height;
 
-        let mut tex_x = (hit.wall_x * tex_w) as i32;
+        let mut tex_x = (hit.wall_x * tex_w as f32) as i32;
         let flip = (hit.side == 0 && ray_dir_x > 0.0) || (hit.side == 1 && ray_dir_y < 0.0);
         if flip {
-            tex_x = (tex_w as i32 - tex_x - 1).max(0);
+            tex_x = (tex_w - tex_x - 1).max(0);
         }
-        tex_x = tex_x.clamp(0, tex_w as i32 - 1);
+        tex_x = tex_x.clamp(0, tex_w - 1);
 
         let dist_shade = (1.0 - (corrected_dist / 12.0).min(0.8)).max(0.2);
         let side_shade = if hit.side == 1 { 0.7 } else { 1.0 };
-        let v = (255.0 * dist_shade * side_shade) as u8;
-        let tint = Color::new(v, v, v, 255);
+        let shade = dist_shade * side_shade;
 
-        let src = Rectangle::new(tex_x as f32, 0.0, 1.0, tex_h);
-        let dest = Rectangle::new(
-            col as f32,
-            draw_start as f32,
-            1.0,
-            (draw_end - draw_start).max(1) as f32,
-        );
-        d.draw_texture_pro(texture, src, dest, Vector2::new(0.0, 0.0), 0.0, tint);
+        for y in draw_start..draw_end {
+            let v = (y - draw_start) as f32 / visible_height as f32;
+            let tex_y = (v * tex_h as f32) as i32;
+            let c = texture.get(tex_x, tex_y);
+            let shaded = Color::new(
+                (c.r as f32 * shade) as u8,
+                (c.g as f32 * shade) as u8,
+                (c.b as f32 * shade) as u8,
+                255,
+            );
+            fb.set_pixel(col, y, shaded);
+        }
 
         if (col as usize) < zbuffer.len() {
             zbuffer[col as usize] = corrected_dist;
@@ -168,25 +175,24 @@ pub fn render_scene(
     }
 }
 
-pub fn render_minimap(
-    d: &mut RaylibDrawHandle,
+pub fn render_minimap_fb(
+    fb: &mut Framebuffer,
     player: &Player,
     grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
-    screen_w: i32,
 ) {
     let tile_px = 6;
     let margin = 12;
     let map_w = MAP_WIDTH as i32 * tile_px;
     let map_h = MAP_HEIGHT as i32 * tile_px;
-    let origin_x = screen_w - map_w - margin;
+    let origin_x = fb.width - map_w - margin;
     let origin_y = margin;
 
-    d.draw_rectangle(
+    fb.fill_rect(
         origin_x - 4,
         origin_y - 4,
         map_w + 8,
         map_h + 8,
-        Color::new(0, 0, 0, 160),
+        Color::new(0, 0, 0, 255),
     );
 
     for row in 0..MAP_HEIGHT {
@@ -197,7 +203,7 @@ pub fn render_minimap(
             } else {
                 wall_color(t, 0)
             };
-            d.draw_rectangle(
+            fb.fill_rect(
                 origin_x + col as i32 * tile_px,
                 origin_y + row as i32 * tile_px,
                 tile_px - 1,
@@ -209,9 +215,9 @@ pub fn render_minimap(
 
     let px = origin_x + (player.x * tile_px as f32) as i32;
     let py = origin_y + (player.y * tile_px as f32) as i32;
-    d.draw_circle(px, py, 3.0, Color::YELLOW);
+    fb.draw_circle_filled(px, py, 3, Color::YELLOW);
     let (dx, dy) = player.dir();
-    d.draw_line(
+    fb.draw_line(
         px,
         py,
         px + (dx * 10.0) as i32,

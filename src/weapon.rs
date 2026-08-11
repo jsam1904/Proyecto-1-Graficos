@@ -1,17 +1,19 @@
-use raylib::prelude::*;
+use crate::framebuffer::Framebuffer;
+use crate::textures::PixelImage;
+use raylib::prelude::Color;
 
 pub struct Weapon {
-    pub texture: Texture2D,
+    pixels: PixelImage,
     bob_phase: f32,
     recoil: f32,
     muzzle_flash_timer: f32,
 }
 
 impl Weapon {
-    pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Self {
-        let img = crate::textures::generate_pistol_image();
+    pub fn new() -> Self {
+        let mut img = crate::textures::generate_pistol_image();
         Self {
-            texture: rl.load_texture_from_image(thread, &img).expect("pistol tex"),
+            pixels: PixelImage::from_image(&mut img),
             bob_phase: 0.0,
             recoil: 0.0,
             muzzle_flash_timer: 0.0,
@@ -41,50 +43,48 @@ impl Weapon {
         self.muzzle_flash_timer = 0.06;
     }
 
-    pub fn draw(&self, d: &mut RaylibDrawHandle, screen_w: i32, screen_h: i32) {
+    pub fn draw_fb(&self, fb: &mut Framebuffer) {
         let scale = 1.6;
-        let tex_w = self.texture.width as f32 * scale;
-        let tex_h = self.texture.height as f32 * scale;
+        let dest_w = (self.pixels.width as f32 * scale) as i32;
+        let dest_h = (self.pixels.height as f32 * scale) as i32;
 
-        let bob_x = self.bob_phase.sin() * 8.0;
-        let bob_y = (self.bob_phase * 2.0).sin().abs() * 6.0;
+        let bob_x = (self.bob_phase.sin() * 8.0) as i32;
+        let bob_y = ((self.bob_phase * 2.0).sin().abs() * 6.0) as i32;
 
-        let base_x = screen_w as f32 / 2.0 - tex_w / 2.0 + bob_x;
-        let base_y = screen_h as f32 - tex_h * 0.85 + bob_y;
-        let recoil_offset_y = self.recoil * 14.0;
+        let base_x = fb.width / 2 - dest_w / 2 + bob_x;
+        let base_y = fb.height - (dest_h as f32 * 0.85) as i32 + bob_y;
+        let recoil_offset_y = (self.recoil * 14.0) as i32;
 
-        let dest = Rectangle::new(base_x, base_y + recoil_offset_y, tex_w, tex_h);
-        let src = Rectangle::new(0.0, 0.0, self.texture.width as f32, self.texture.height as f32);
-        d.draw_texture_pro(&self.texture, src, dest, Vector2::new(0.0, 0.0), 0.0, Color::WHITE);
+        for dy in 0..dest_h {
+            let sy = ((dy as f32 / scale) as i32).clamp(0, self.pixels.height - 1);
+            for dx in 0..dest_w {
+                let sx = ((dx as f32 / scale) as i32).clamp(0, self.pixels.width - 1);
+                let c = self.pixels.get(sx, sy);
+                if c.a == 0 {
+                    continue;
+                }
+                fb.set_pixel(base_x + dx, base_y + recoil_offset_y + dy, c);
+            }
+        }
 
         if self.muzzle_flash_timer > 0.0 {
-            let flash_x = screen_w as f32 / 2.0 + bob_x;
-            let flash_y = base_y + recoil_offset_y - 6.0 * scale;
+            let flash_x = fb.width / 2 + bob_x;
+            let flash_y = base_y + recoil_offset_y - (6.0 * scale) as i32;
             let alpha = (self.muzzle_flash_timer / 0.06 * 255.0) as u8;
-            d.draw_circle(
-                flash_x as i32,
-                flash_y as i32,
-                14.0,
-                Color::new(255, 230, 120, alpha),
-            );
-            d.draw_circle(
-                flash_x as i32,
-                flash_y as i32,
-                7.0,
-                Color::new(255, 255, 220, alpha),
-            );
+            fb.draw_circle_blend(flash_x, flash_y, 14, Color::new(255, 230, 120, alpha));
+            fb.draw_circle_blend(flash_x, flash_y, 7, Color::new(255, 255, 220, alpha));
         }
     }
 }
 
-pub fn draw_crosshair(d: &mut RaylibDrawHandle, screen_w: i32, screen_h: i32) {
-    let cx = screen_w / 2;
-    let cy = screen_h / 2;
+pub fn draw_crosshair_fb(fb: &mut Framebuffer) {
+    let cx = fb.width / 2;
+    let cy = fb.height / 2;
     let size = 8;
     let gap = 3;
-    let color = Color::new(255, 255, 255, 220);
-    d.draw_line(cx - size - gap, cy, cx - gap, cy, color);
-    d.draw_line(cx + gap, cy, cx + size + gap, cy, color);
-    d.draw_line(cx, cy - size - gap, cx, cy - gap, color);
-    d.draw_line(cx, cy + gap, cx, cy + size + gap, color);
+    let color = Color::new(255, 255, 255, 255);
+    fb.draw_line(cx - size - gap, cy, cx - gap, cy, color);
+    fb.draw_line(cx + gap, cy, cx + size + gap, cy, color);
+    fb.draw_line(cx, cy - size - gap, cx, cy - gap, color);
+    fb.draw_line(cx, cy + gap, cx, cy + size + gap, color);
 }

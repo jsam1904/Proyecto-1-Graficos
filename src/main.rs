@@ -1,15 +1,19 @@
+mod framebuffer;
 mod map;
 mod player;
 mod raycasting;
+mod recorder;
 mod sprite;
 mod state;
 mod textures;
 mod weapon;
 
+use framebuffer::Framebuffer;
 use map::get_levels;
 use player::Player;
 use raylib::prelude::*;
-use sprite::{render_sprites, AnimatedSprite};
+use recorder::GifRecorder;
+use sprite::{render_sprites_fb, AnimatedSprite};
 use state::GameState;
 use textures::{CreatureTextures, WallTextures};
 use weapon::Weapon;
@@ -40,13 +44,19 @@ fn main() {
         levels[current_level].player_start_angle,
     );
 
-    let mut sprites: Vec<AnimatedSprite> = spawn_initial_sprites(&levels[current_level].spawn_points, NUM_ACTIVE_ENEMIES);
+    let mut sprites: Vec<AnimatedSprite> =
+        spawn_initial_sprites(&levels[current_level].spawn_points, NUM_ACTIVE_ENEMIES);
     let mut spawn_cursor: usize = NUM_ACTIVE_ENEMIES;
     let mut zbuffer: Vec<f32> = vec![1e30; SCREEN_W as usize];
 
-    let wall_textures = WallTextures::load(&mut rl, &thread);
-    let creature_textures = CreatureTextures::load(&mut rl, &thread);
-    let mut weapon = Weapon::new(&mut rl, &thread);
+    let wall_textures = WallTextures::load();
+    let creature_textures = CreatureTextures::load();
+    let mut weapon = Weapon::new();
+
+    let mut framebuffer = Framebuffer::new(&mut rl, &thread, SCREEN_W, SCREEN_H);
+
+    let mut gif_recorder: Option<GifRecorder> = None;
+    let mut has_recorded_once = false;
 
     while !rl.window_should_close() {
         let dt = rl.get_frame_time();
@@ -74,9 +84,15 @@ fn main() {
                         levels[current_level].player_start.1,
                         levels[current_level].player_start_angle,
                     );
-                    sprites = spawn_initial_sprites(&levels[current_level].spawn_points, NUM_ACTIVE_ENEMIES);
+                    sprites =
+                        spawn_initial_sprites(&levels[current_level].spawn_points, NUM_ACTIVE_ENEMIES);
                     spawn_cursor = NUM_ACTIVE_ENEMIES;
                     state = GameState::Playing;
+
+                    if !has_recorded_once {
+                        has_recorded_once = true;
+                        gif_recorder = GifRecorder::start("demo.gif", SCREEN_W, SCREEN_H, 12.0, 8.0);
+                    }
                 }
             }
             GameState::Playing => {
@@ -124,6 +140,21 @@ fn main() {
             }
         }
 
+        if state == GameState::Playing {
+            raycasting::render_scene_fb(
+                &mut framebuffer,
+                &player,
+                &levels[current_level].grid,
+                &mut zbuffer,
+                &wall_textures,
+            );
+            render_sprites_fb(&mut framebuffer, &player, &sprites, &zbuffer, &creature_textures);
+            raycasting::render_minimap_fb(&mut framebuffer, &player, &levels[current_level].grid);
+            weapon.draw_fb(&mut framebuffer);
+            weapon::draw_crosshair_fb(&mut framebuffer);
+            framebuffer.upload();
+        }
+
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::BLACK);
 
@@ -131,23 +162,25 @@ fn main() {
             GameState::Welcome => draw_welcome(&mut d),
             GameState::LevelSelect => draw_level_select(&mut d, &levels, selected_menu_option),
             GameState::Playing => {
-                raycasting::render_scene(
-                    &mut d,
-                    &player,
-                    &levels[current_level].grid,
-                    SCREEN_W,
-                    SCREEN_H,
-                    &mut zbuffer,
-                    &wall_textures,
-                );
-                render_sprites(&mut d, &player, &sprites, &zbuffer, SCREEN_W, SCREEN_H, &creature_textures);
-                raycasting::render_minimap(&mut d, &player, &levels[current_level].grid, SCREEN_W);
-                weapon.draw(&mut d, SCREEN_W, SCREEN_H);
-                weapon::draw_crosshair(&mut d, SCREEN_W, SCREEN_H);
+                framebuffer.present(&mut d); // UNA sola llamada de dibujo para toda la escena
                 d.draw_fps(10, 10);
-                d.draw_text("ESC: menu | WASD: mover | Flechas: rotar | Click/Espacio: disparar", 10, SCREEN_H - 24, 16, Color::WHITE);
+                d.draw_text(
+                    "ESC: menu | WASD: mover | Flechas: rotar | Click/Espacio: disparar",
+                    10,
+                    SCREEN_H - 24,
+                    16,
+                    Color::WHITE,
+                );
             }
             GameState::Success => draw_success(&mut d, &levels[current_level].name),
+        }
+        drop(d);
+
+        if let Some(recorder) = gif_recorder.as_mut() {
+            recorder.update(dt, &mut rl, &thread);
+            if !recorder.is_active() {
+                gif_recorder = None;
+            }
         }
     }
 }

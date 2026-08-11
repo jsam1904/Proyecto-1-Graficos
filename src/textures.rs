@@ -11,6 +11,33 @@ fn darker(c: Color, factor: f32) -> Color {
     )
 }
 
+pub struct PixelImage {
+    pub width: i32,
+    pub height: i32,
+    pixels: Vec<Color>,
+}
+
+impl PixelImage {
+    pub fn from_image(img: &mut Image) -> Self {
+        let width = img.width();
+        let height = img.height();
+        let mut pixels = Vec::with_capacity((width * height) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                pixels.push(img.get_color(x, y));
+            }
+        }
+        Self { width, height, pixels }
+    }
+
+    #[inline]
+    pub fn get(&self, x: i32, y: i32) -> Color {
+        let x = x.clamp(0, self.width - 1);
+        let y = y.clamp(0, self.height - 1);
+        self.pixels[(y * self.width + x) as usize]
+    }
+}
+
 fn brick_pattern(base: Color, mortar: Color) -> Image {
     let mut img = Image::gen_image_color(TEX_SIZE, TEX_SIZE, mortar);
     let brick_w = 16;
@@ -83,31 +110,31 @@ fn stone_pattern(base: Color) -> Image {
 }
 
 pub struct WallTextures {
-    pub tex_1: Texture2D,
-    pub tex_2: Texture2D,
-    pub tex_3: Texture2D,
-    pub tex_4: Texture2D,
-    pub tex_default: Texture2D,
+    pub tex_1: PixelImage,
+    pub tex_2: PixelImage,
+    pub tex_3: PixelImage,
+    pub tex_4: PixelImage,
+    pub tex_default: PixelImage,
 }
 
 impl WallTextures {
-    pub fn load(rl: &mut RaylibHandle, thread: &RaylibThread) -> Self {
-        let img1 = brick_pattern(Color::new(178, 74, 58, 255), Color::new(90, 60, 55, 255));
-        let img2 = panel_pattern(Color::new(60, 110, 150, 255), Color::new(30, 60, 90, 255));
-        let img3 = stone_pattern(Color::new(95, 140, 95, 255));
-        let img4 = panel_pattern(Color::new(190, 155, 60, 255), Color::new(120, 95, 30, 255));
-        let img_default = brick_pattern(Color::new(140, 140, 140, 255), Color::new(80, 80, 80, 255));
+pub fn load() -> Self {
+        let mut img1 = brick_pattern(Color::new(178, 74, 58, 255), Color::new(90, 60, 55, 255));
+        let mut img2 = panel_pattern(Color::new(60, 110, 150, 255), Color::new(30, 60, 90, 255));
+        let mut img3 = stone_pattern(Color::new(95, 140, 95, 255));
+        let mut img4 = panel_pattern(Color::new(190, 155, 60, 255), Color::new(120, 95, 30, 255));
+        let mut img_default = brick_pattern(Color::new(140, 140, 140, 255), Color::new(80, 80, 80, 255));
 
         Self {
-            tex_1: rl.load_texture_from_image(thread, &img1).expect("tex1"),
-            tex_2: rl.load_texture_from_image(thread, &img2).expect("tex2"),
-            tex_3: rl.load_texture_from_image(thread, &img3).expect("tex3"),
-            tex_4: rl.load_texture_from_image(thread, &img4).expect("tex4"),
-            tex_default: rl.load_texture_from_image(thread, &img_default).expect("texd"),
+            tex_1: PixelImage::from_image(&mut img1),
+            tex_2: PixelImage::from_image(&mut img2),
+            tex_3: PixelImage::from_image(&mut img3),
+            tex_4: PixelImage::from_image(&mut img4),
+            tex_default: PixelImage::from_image(&mut img_default),
         }
     }
 
-    pub fn get(&self, wall_type: u8) -> &Texture2D {
+    pub fn get(&self, wall_type: u8) -> &PixelImage {
         match wall_type {
             1 => &self.tex_1,
             2 => &self.tex_2,
@@ -190,21 +217,18 @@ fn generate_creature_frame(blink: bool, pupil_shift: i32) -> Image {
 }
 
 pub struct CreatureTextures {
-    pub frames: Vec<Texture2D>,
+    pub frames: Vec<PixelImage>,
 }
 
 impl CreatureTextures {
-    pub fn load(rl: &mut RaylibHandle, thread: &RaylibThread) -> Self {
-        let images = vec![
+pub fn load() -> Self {
+        let mut images = vec![
             generate_creature_frame(false, -2),
             generate_creature_frame(false, 0),
             generate_creature_frame(false, 2),
             generate_creature_frame(true, 0),
         ];
-        let frames = images
-            .iter()
-            .map(|img| rl.load_texture_from_image(thread, img).expect("creature tex"))
-            .collect();
+        let frames = images.iter_mut().map(PixelImage::from_image).collect();
         Self { frames }
     }
 }
