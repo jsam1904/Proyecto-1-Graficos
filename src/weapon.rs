@@ -1,4 +1,3 @@
-// weapon.rs
 use raylib::prelude::*;
 
 pub struct Weapon {
@@ -43,7 +42,7 @@ impl Weapon {
     }
 
     pub fn draw(&self, d: &mut RaylibDrawHandle, screen_w: i32, screen_h: i32) {
-        let scale = 1.6; // antes 4.5, ocupaba demasiada pantalla
+        let scale = 1.6;
         let tex_w = self.texture.width as f32 * scale;
         let tex_h = self.texture.height as f32 * scale;
 

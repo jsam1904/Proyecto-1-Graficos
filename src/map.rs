@@ -21,7 +21,6 @@ pub const LEVEL_1: [[u8; MAP_WIDTH]; MAP_HEIGHT] = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
 ];
 
-// Nivel 2 de ejemplo (más abierto, otro layout). Duplícalo/edítalo a gusto.
 #[rustfmt::skip]
 pub const LEVEL_2: [[u8; MAP_WIDTH]; MAP_HEIGHT] = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -47,8 +46,8 @@ pub struct Level {
     pub name: &'static str,
     pub player_start: (f32, f32),
     pub player_start_angle: f32,
-    // Casilla (col, row) que, al pisarla, dispara la pantalla de éxito.
     pub goal_tile: (usize, usize),
+    pub spawn_points: Vec<(f32, f32)>,
 }
 
 pub fn get_levels() -> Vec<Level> {
@@ -59,6 +58,13 @@ pub fn get_levels() -> Vec<Level> {
             player_start: (2.5, 1.5),
             player_start_angle: 0.0,
             goal_tile: (14, 7),
+            spawn_points: vec![
+                (6.5, 3.5),
+                (10.5, 10.5),
+                (3.5, 12.5),
+                (9.5, 12.5),
+                (8.5, 6.5),
+            ],
         },
         Level {
             grid: LEVEL_2,
@@ -66,6 +72,13 @@ pub fn get_levels() -> Vec<Level> {
             player_start: (2.5, 1.5),
             player_start_angle: 0.0,
             goal_tile: (6, 8),
+            spawn_points: vec![
+                (6.5, 6.5),
+                (7.5, 13.5),
+                (11.5, 13.5),
+                (3.5, 3.5),
+                (12.5, 3.5),
+            ],
         },
     ]
 }

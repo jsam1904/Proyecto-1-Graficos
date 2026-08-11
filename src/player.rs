@@ -3,10 +3,9 @@ use crate::map::{is_wall, MAP_HEIGHT, MAP_WIDTH};
 pub struct Player {
     pub x: f32,
     pub y: f32,
-    pub angle: f32, // radianes, 0 = mirando hacia +x
+    pub angle: f32,
     pub move_speed: f32,
-    pub rot_speed: f32, // radianes por segundo (rotación con flechas izq/der)
-    // margen para que la "cámara"/hitbox no se pegue exactamente a la pared
+    pub rot_speed: f32,
     pub collision_radius: f32,
 }
 
@@ -16,8 +15,8 @@ impl Player {
             x,
             y,
             angle,
-            move_speed: 3.2, // unidades del mapa por segundo
-            rot_speed: 2.5,  // radianes por segundo, ajusta a gusto
+            move_speed: 3.2,
+            rot_speed: 2.5,
             collision_radius: 0.20,
         }
     }
@@ -25,20 +24,15 @@ impl Player {
     pub fn dir(&self) -> (f32, f32) {
         (self.angle.cos(), self.angle.sin())
     }
-
-    /// Intenta mover al jugador por (dx, dy) en coordenadas de mundo,
-    /// resolviendo colisión eje por eje para poder "deslizar" sobre las paredes
-    /// en vez de trabarse (y sin poder atravesarlas nunca).
+    
     pub fn try_move(&mut self, dx: f32, dy: f32, grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT]) {
         let r = self.collision_radius;
 
-        // Eje X
         let new_x = self.x + dx;
         if !collides(new_x, self.y, r, grid) {
             self.x = new_x;
         }
 
-        // Eje Y (se evalúa por separado para permitir "sliding" contra la pared)
         let new_y = self.y + dy;
         if !collides(self.x, new_y, r, grid) {
             self.y = new_y;
@@ -47,7 +41,6 @@ impl Player {
 
     pub fn rotate(&mut self, delta_angle: f32) {
         self.angle += delta_angle;
-        // normalizar a [0, 2PI)
         let two_pi = std::f32::consts::PI * 2.0;
         self.angle = self.angle.rem_euclid(two_pi);
     }
@@ -57,9 +50,6 @@ impl Player {
     }
 }
 
-/// Revisa colisión de un círculo de radio `r` centrado en (x, y) contra las
-/// 4 celdas vecinas relevantes. Esto evita que el jugador atraviese esquinas
-/// de pared en diagonal.
 fn collides(x: f32, y: f32, r: f32, grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT]) -> bool {
     let checks = [
         (x - r, y - r),

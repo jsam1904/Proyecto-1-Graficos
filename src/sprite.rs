@@ -5,6 +5,8 @@ use raylib::prelude::*;
 
 const FRAME_COUNT: usize = 4;
 
+pub const RESPAWN_DELAY: f32 = 4.0;
+
 pub struct AnimatedSprite {
     pub x: f32,
     pub y: f32,
@@ -12,6 +14,7 @@ pub struct AnimatedSprite {
     pub frame_timer: f32,
     pub frame_duration: f32,
     pub alive: bool,
+    respawn_timer: f32,
 }
 
 impl AnimatedSprite {
@@ -23,6 +26,7 @@ impl AnimatedSprite {
             frame_timer: 0.0,
             frame_duration: 0.28,
             alive: true,
+            respawn_timer: 0.0,
         }
     }
 
@@ -32,6 +36,27 @@ impl AnimatedSprite {
             self.frame_timer = 0.0;
             self.frame_index = (self.frame_index + 1) % FRAME_COUNT;
         }
+    }
+
+    pub fn kill(&mut self) {
+        self.alive = false;
+        self.respawn_timer = RESPAWN_DELAY;
+    }
+
+    pub fn tick_respawn(&mut self, dt: f32) -> bool {
+        if self.alive {
+            return false;
+        }
+        self.respawn_timer -= dt;
+        self.respawn_timer <= 0.0
+    }
+
+    pub fn respawn_at(&mut self, x: f32, y: f32) {
+        self.x = x;
+        self.y = y;
+        self.alive = true;
+        self.frame_index = 0;
+        self.frame_timer = 0.0;
     }
 }
 
@@ -101,7 +126,7 @@ pub fn render_sprites(
         let draw_w = (end_x - start_x).max(1);
         for col in start_x.max(0)..end_x.min(screen_w) {
             if (col as usize) < zbuffer.len() && corrected_dist >= zbuffer[col as usize] {
-                continue;
+                continue; // hay una pared más cerca en esta columna: ocluido
             }
             let local_x = col - start_x;
             let tex_x = ((local_x as f32 / draw_w as f32) * tex_w).clamp(0.0, tex_w - 1.0);

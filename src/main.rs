@@ -16,6 +16,7 @@ use weapon::Weapon;
 
 const SCREEN_W: i32 = 960;
 const SCREEN_H: i32 = 540;
+const NUM_ACTIVE_ENEMIES: usize = 3;
 
 fn main() {
     let (mut rl, thread) = raylib::init()
@@ -39,7 +40,8 @@ fn main() {
         levels[current_level].player_start_angle,
     );
 
-    let mut sprites: Vec<AnimatedSprite> = spawn_sprites_for_level(current_level);
+    let mut sprites: Vec<AnimatedSprite> = spawn_initial_sprites(&levels[current_level].spawn_points, NUM_ACTIVE_ENEMIES);
+    let mut spawn_cursor: usize = NUM_ACTIVE_ENEMIES;
     let mut zbuffer: Vec<f32> = vec![1e30; SCREEN_W as usize];
 
     let wall_textures = WallTextures::load(&mut rl, &thread);
@@ -72,7 +74,8 @@ fn main() {
                         levels[current_level].player_start.1,
                         levels[current_level].player_start_angle,
                     );
-                    sprites = spawn_sprites_for_level(current_level);
+                    sprites = spawn_initial_sprites(&levels[current_level].spawn_points, NUM_ACTIVE_ENEMIES);
+                    spawn_cursor = NUM_ACTIVE_ENEMIES;
                     state = GameState::Playing;
                 }
             }
@@ -90,20 +93,25 @@ fn main() {
                 weapon.update(dt, is_moving);
 
                 for s in sprites.iter_mut() {
-                    s.update(dt);
+                    if s.alive {
+                        s.update(dt);
+                    } else if s.tick_respawn(dt) {
+                        let points = &levels[current_level].spawn_points;
+                        if !points.is_empty() {
+                            let (sx, sy) = points[spawn_cursor % points.len()];
+                            spawn_cursor += 1;
+                            s.respawn_at(sx, sy);
+                        }
+                    }
                 }
 
-                // Disparo: click izquierdo o SPACE. Revisa el sprite más cercano
-                // dentro de un cono angular pequeño frente al jugador.
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)
                     || rl.is_key_pressed(KeyboardKey::KEY_SPACE)
                 {
                     try_shoot(&player, &mut sprites);
                     weapon.trigger_shot();
-                    // TODO efecto de sonido de disparo aquí (sound.play())
                 }
 
-                // Condición de victoria: pisar la casilla meta del nivel
                 let (tx, ty) = player.tile();
                 if (tx, ty) == levels[current_level].goal_tile {
                     state = GameState::Success;
@@ -150,7 +158,6 @@ fn update_playing(
     grid: &[[u8; map::MAP_WIDTH]; map::MAP_HEIGHT],
     dt: f32,
 ) {
-    // --- Rotación con flechas izquierda/derecha ---
     if rl.is_key_down(KeyboardKey::KEY_LEFT) {
         player.rotate(-player.rot_speed * dt);
     }
@@ -158,7 +165,6 @@ fn update_playing(
         player.rotate(player.rot_speed * dt);
     }
 
-    // --- Movimiento WASD con colisión (no atraviesa paredes) ---
     let (dir_x, dir_y) = player.dir();
     let (strafe_x, strafe_y) = (-dir_y, dir_x);
 
@@ -216,21 +222,20 @@ fn try_shoot(player: &Player, sprites: &mut Vec<AnimatedSprite>) {
         }
     }
     if let Some((i, _)) = best {
-        sprites[i].alive = false;
+        sprites[i].kill();
     }
 }
 
-fn spawn_sprites_for_level(level_index: usize) -> Vec<AnimatedSprite> {
-    match level_index {
-        0 => vec![
-            AnimatedSprite::new(6.5, 3.5),
-            AnimatedSprite::new(10.5, 10.5),
-        ],
-        _ => vec![
-            AnimatedSprite::new(3.5, 3.5),
-            AnimatedSprite::new(12.5, 12.5),
-        ],
+fn spawn_initial_sprites(spawn_points: &[(f32, f32)], count: usize) -> Vec<AnimatedSprite> {
+    if spawn_points.is_empty() {
+        return Vec::new();
     }
+    (0..count)
+        .map(|i| {
+            let (x, y) = spawn_points[i % spawn_points.len()];
+            AnimatedSprite::new(x, y)
+        })
+        .collect()
 }
 
 fn draw_welcome(d: &mut RaylibDrawHandle) {

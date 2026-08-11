@@ -52,7 +52,6 @@ fn panel_pattern(base: Color, line: Color) -> Image {
         img.draw_rectangle(x, 0, 2, TEX_SIZE, line);
         x += panel;
     }
-    // remaches
     let rivet = darker(base, 1.3);
     for py in (4..TEX_SIZE).step_by(panel as usize) {
         for px in (4..TEX_SIZE).step_by(panel as usize) {
@@ -72,7 +71,7 @@ fn stone_pattern(base: Color) -> Image {
         let offset = if row % 2 == 0 { 0 } else { block / 2 };
         let mut x = -offset;
         while x < TEX_SIZE {
-            let n = ((x * 13 + y * 7).rem_euclid(11)) as f32 / 11.0; // pseudo-ruido determinista
+            let n = ((x * 13 + y * 7).rem_euclid(11)) as f32 / 11.0;
             let shade = 0.75 + n * 0.4;
             img.draw_rectangle(x + 1, y + 1, block - 2, block - 2, darker(base, shade));
             x += block;
@@ -133,7 +132,7 @@ pub fn generate_pistol_image() -> Image {
     let sight = Color::new(20, 20, 20, 255);
     let transparent = Color::new(0, 0, 0, 0);
 
-    let cx = w / 2; 
+    let cx = w / 2;
 
     img.draw_rectangle(cx - 27, 8, 54, 26, metal);
     img.draw_rectangle(cx - 27, 8, 54, 5, metal_light);
