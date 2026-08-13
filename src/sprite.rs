@@ -1,4 +1,5 @@
 use crate::framebuffer::Framebuffer;
+use crate::map::{is_wall, MAP_HEIGHT, MAP_WIDTH};
 use crate::player::Player;
 use crate::raycasting::FOV;
 use crate::textures::CreatureTextures;
@@ -8,6 +9,10 @@ const FRAME_COUNT: usize = 4;
 
 pub const RESPAWN_DELAY: f32 = 4.0;
 
+const CHASE_RADIUS: f32 = 5.5;
+const MIN_CHASE_DIST: f32 = 0.45;
+const SPRITE_COLLISION_RADIUS: f32 = 0.22;
+
 pub struct AnimatedSprite {
     pub x: f32,
     pub y: f32,
@@ -16,10 +21,15 @@ pub struct AnimatedSprite {
     pub frame_duration: f32,
     pub alive: bool,
     respawn_timer: f32,
+    move_speed: f32,
+    wander_time: f32,
+    wander_seed: f32,
 }
 
 impl AnimatedSprite {
     pub fn new(x: f32, y: f32) -> Self {
+        let wander_seed = ((x * 12.9898 + y * 78.233).sin() * 43758.5453).fract();
+
         Self {
             x,
             y,
@@ -28,6 +38,9 @@ impl AnimatedSprite {
             frame_duration: 0.28,
             alive: true,
             respawn_timer: 0.0,
+            move_speed: 1.6,
+            wander_time: 0.0,
+            wander_seed,
         }
     }
 
@@ -37,6 +50,35 @@ impl AnimatedSprite {
             self.frame_timer = 0.0;
             self.frame_index = (self.frame_index + 1) % FRAME_COUNT;
         }
+    }
+
+    pub fn update_ai(
+        &mut self,
+        dt: f32,
+        player_x: f32,
+        player_y: f32,
+        grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
+    ) {
+        if !self.alive {
+            return;
+        }
+        self.wander_time += dt;
+
+        let dx = player_x - self.x;
+        let dy = player_y - self.y;
+        let dist = (dx * dx + dy * dy).sqrt();
+
+        let (dir_x, dir_y) = if dist < CHASE_RADIUS && dist > MIN_CHASE_DIST {
+            (dx / dist, dy / dist)
+        } else if dist <= MIN_CHASE_DIST {
+            (0.0, 0.0) 
+        } else {
+            let angle = self.wander_seed * 10.0 + self.wander_time * 0.6;
+            (angle.cos(), angle.sin())
+        };
+
+        let step = self.move_speed * dt;
+        try_move_sprite(&mut self.x, &mut self.y, dir_x * step, dir_y * step, grid);
     }
 
     pub fn kill(&mut self) {
@@ -58,6 +100,38 @@ impl AnimatedSprite {
         self.alive = true;
         self.frame_index = 0;
         self.frame_timer = 0.0;
+    }
+}
+
+fn sprite_collides(x: f32, y: f32, r: f32, grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT]) -> bool {
+    let checks = [
+        (x - r, y - r),
+        (x + r, y - r),
+        (x - r, y + r),
+        (x + r, y + r),
+    ];
+    for (cx, cy) in checks {
+        if is_wall(grid, cx.floor() as i32, cy.floor() as i32) {
+            return true;
+        }
+    }
+    false
+}
+
+fn try_move_sprite(
+    x: &mut f32,
+    y: &mut f32,
+    dx: f32,
+    dy: f32,
+    grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
+) {
+    let new_x = *x + dx;
+    if !sprite_collides(new_x, *y, SPRITE_COLLISION_RADIUS, grid) {
+        *x = new_x;
+    }
+    let new_y = *y + dy;
+    if !sprite_collides(*x, new_y, SPRITE_COLLISION_RADIUS, grid) {
+        *y = new_y;
     }
 }
 

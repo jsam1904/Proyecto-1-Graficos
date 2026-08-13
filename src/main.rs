@@ -24,6 +24,7 @@ use weapon::Weapon;
 const SCREEN_W: i32 = 960;
 const SCREEN_H: i32 = 540;
 const NUM_ACTIVE_ENEMIES: usize = 3;
+const GAME_OVER_DISTANCE: f32 = 0.45;
 
 fn main() {
     let (mut rl, thread) = raylib::init()
@@ -123,6 +124,7 @@ fn main() {
                 for s in sprites.iter_mut() {
                     if s.alive {
                         s.update(dt);
+                        s.update_ai(dt, player.x, player.y, &levels[current_level].grid);
                     } else if s.tick_respawn(dt) {
                         let points = &levels[current_level].spawn_points;
                         if !points.is_empty() {
@@ -131,6 +133,18 @@ fn main() {
                             s.respawn_at(sx, sy);
                         }
                     }
+                }
+
+                let caught_by_enemy = sprites.iter().any(|s| {
+                    if !s.alive {
+                        return false;
+                    }
+                    let dx = s.x - player.x;
+                    let dy = s.y - player.y;
+                    (dx * dx + dy * dy).sqrt() < GAME_OVER_DISTANCE
+                });
+                if caught_by_enemy {
+                    state = GameState::GameOver;
                 }
 
                 if rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT)
@@ -148,6 +162,22 @@ fn main() {
             }
             GameState::Success => {
                 if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
+                    state = GameState::LevelSelect;
+                }
+            }
+            GameState::GameOver => {
+                if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
+                    player = Player::new(
+                        levels[current_level].player_start.0,
+                        levels[current_level].player_start.1,
+                        levels[current_level].player_start_angle,
+                    );
+                    sprites =
+                        spawn_initial_sprites(&levels[current_level].spawn_points, NUM_ACTIVE_ENEMIES);
+                    spawn_cursor = NUM_ACTIVE_ENEMIES;
+                    state = GameState::Playing;
+                }
+                if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
                     state = GameState::LevelSelect;
                 }
             }
@@ -193,6 +223,7 @@ fn main() {
                 );
             }
             GameState::Success => draw_success(&mut d, &levels[current_level].name),
+            GameState::GameOver => draw_game_over(&mut d, &levels[current_level].name),
         }
         drop(d);
 
@@ -341,6 +372,25 @@ fn draw_success(d: &mut RaylibDrawHandle, level_name: &str) {
     d.draw_text(
         "Presiona ENTER para volver al menu",
         SCREEN_W / 2 - 200,
+        330,
+        20,
+        Color::LIGHTGRAY,
+    );
+}
+
+fn draw_game_over(d: &mut RaylibDrawHandle, level_name: &str) {
+    d.clear_background(Color::new(40, 12, 12, 255));
+    d.draw_text("GAME OVER", SCREEN_W / 2 - 160, 190, 48, Color::RED);
+    d.draw_text(
+        &format!("Te atrapo un enemigo en: {}", level_name),
+        SCREEN_W / 2 - 210,
+        260,
+        20,
+        Color::WHITE,
+    );
+    d.draw_text(
+        "ENTER: reintentar nivel  |  ESC: volver al menu",
+        SCREEN_W / 2 - 220,
         330,
         20,
         Color::LIGHTGRAY,

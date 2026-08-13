@@ -12,6 +12,9 @@ dibujando una columna de textura cuya altura depende de la distancia corregida
 (RGBA8) que se sube a una textura y se dibuja con **una sola llamada de dibujo**
 por frame.
 
+**Objetivo**: llegar a la casilla de meta del nivel sin que te atrape ninguno de los enemigos
+que patrullan el mapa; puedes eliminarlos disparándoles, pero reaparecen a los pocos segundos.
+
 ## Características
 
 - **Renderizado por raycasting** con DDA, corrección de ojo de pez y sombreado por distancia.
@@ -22,19 +25,29 @@ por frame.
   `blend_pixel`, rectángulos, círculos y líneas (Bresenham).
 - **Sprites animados** de 4 frames con proyección a pantalla, ordenamiento por distancia,
   transparencia y oclusión correcta contra las paredes mediante un *z-buffer* por columna.
+- **Enemigos con IA**: patrullan el nivel deambulando y, cuando el jugador entra en un radio de
+  5.5 unidades, lo persiguen esquivando paredes (colisión por eje, igual que el jugador).
 - **Enemigos con respawn**: hay 3 enemigos activos; al morir reaparecen tras 4 segundos en
   el siguiente punto de spawn del nivel.
+- **Game Over**: si un enemigo llega a menos de 0.45 unidades del jugador, la partida termina y
+  se muestra una pantalla de derrota con opción de reintentar el nivel o volver al menú.
 - **Arma en primera persona**: pistola dibujada por código con *bobbing* al caminar,
   retroceso al disparar, fogonazo (*muzzle flash*) y mira central.
-- **Minimapa** en la esquina superior derecha con la posición y dirección del jugador.
+- **Minimapa** en la esquina superior derecha con la posición y dirección del jugador, y el
+  abanico de rayos del FOV proyectado sobre el mapa. Con `M` se alterna a un **mapa a pantalla
+  completa** (centrado, sobre un velo oscuro y con más rayos) que oculta el arma y la mira.
+- **Audio** (`audio.rs`): música de fondo en loop (`assets/audio/theme.ogg`, al 40% de volumen) y
+  efecto de disparo (`assets/audio/shot.wav`). Si algún archivo falta, el juego avisa por consola
+  y sigue funcionando sin sonido.
 - **Movimiento con colisión** (WASD), radio de colisión y deslizamiento por eje para no
   atravesar paredes.
-- **Máquina de estados**: pantalla de bienvenida → selección de nivel → juego → pantalla de éxito.
+- **Máquina de estados**: pantalla de bienvenida → selección de nivel → juego → pantalla de éxito
+  (al pisar la casilla de meta) o de *game over* (si un enemigo te atrapa).
 - **Dos niveles** con distinto layout, posición inicial, puntos de spawn y casilla de meta.
 - **Disparo** con click izquierdo o barra espaciadora: elimina el enemigo vivo más cercano
   dentro de un cono de 0.15 rad y 10 unidades de rango.
 - **Grabador de GIF integrado** (`recorder.rs`): la primera vez que entras a un nivel se
-  graba automáticamente `demo.gif` (8 segundos a 12 fps).
+  graba automáticamente `demo.gif` (8 segundos a 12 fps) y arranca la música.
 - Contador de FPS en pantalla (objetivo de 60 FPS con vsync), a 960x540.
 
 ## Requisitos
@@ -57,6 +70,9 @@ El modo `--release` está configurado con `opt-level = 3` y LTO. El perfil `dev`
 sube el `opt-level` (2 para el proyecto, 3 para las dependencias) porque el raycasting
 por software es muy sensible a las optimizaciones.
 
+Ejecútalo desde la raíz del repositorio: las rutas de los archivos de audio (`assets/audio/...`)
+son relativas al directorio de trabajo.
+
 ## Controles
 
 | Acción | Tecla |
@@ -65,25 +81,35 @@ por software es muy sensible a las optimizaciones.
 | Desplazamiento lateral | `A` / `D` |
 | Rotar la cámara | Flechas `←` `→` |
 | Disparar | Click izquierdo o `Espacio` |
+| Mapa a pantalla completa | `M` |
 | Continuar (bienvenida) | `Enter` o `Espacio` |
 | Navegar el menú de niveles | Flechas `↑` `↓` + `Enter` |
 | Volver al menú desde el juego | `Esc` |
 | Volver al menú desde la pantalla de éxito | `Enter` |
+| Reintentar el nivel tras un *game over* | `Enter` |
+| Volver al menú tras un *game over* | `Esc` |
 
 ## Estructura del código
 
 ```
 src/
 ├── main.rs         # Bucle principal, máquina de estados, input, disparo y pantallas de UI
-├── state.rs        # Enum GameState (Welcome, LevelSelect, Playing, Success)
+├── state.rs        # Enum GameState (Welcome, LevelSelect, Playing, Success, GameOver)
 ├── map.rs          # Rejillas de los niveles, struct Level y consultas de colisión/tipo de pared
 ├── player.rs       # Posición, ángulo, movimiento con colisión y rotación del jugador
 ├── raycasting.rs   # DDA, render texturizado de la escena 3D y del minimapa
-├── sprite.rs       # AnimatedSprite (animación, muerte y respawn) y proyección con z-buffer
+├── sprite.rs       # AnimatedSprite (animación, IA de deambular/perseguir, muerte y respawn)
+│                   # y proyección a pantalla con z-buffer
 ├── textures.rs     # Generación procedural de texturas de pared, pistola y criaturas
 ├── framebuffer.rs  # Framebuffer RGBA8 en CPU + primitivas de dibujo + subida a textura
 ├── weapon.rs       # Pistola en primera persona: bobbing, retroceso, fogonazo y mira
+├── audio.rs        # AudioManager: carga y reproduce la música de fondo y el sonido de disparo
 └── recorder.rs     # Grabador de GIF de demostración
+
+assets/
+└── audio/
+    ├── theme.ogg   # Música de fondo (se reproduce en loop)
+    └── shot.wav    # Efecto de sonido del disparo
 ```
 
 ### Cómo agregar o editar un nivel
@@ -109,8 +135,3 @@ poder muestrearlas pixel a pixel durante el raycasting. Para un nuevo tipo de pa
 escribe una función que devuelva una `Image` (como `brick_pattern`, `panel_pattern` o
 `stone_pattern`), añádela a `WallTextures` y mapea su número en `WallTextures::get`.
 
-## Pendientes
-
-- Música de fondo y efecto de sonido al disparar.
-- Texturas cargadas desde archivos de imagen en lugar de generadas por código.
-- Enemigos con movimiento e IA: por ahora permanecen fijos en su punto de spawn.

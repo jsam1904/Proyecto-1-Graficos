@@ -4,4 +4,5 @@ pub enum GameState {
     LevelSelect,
     Playing,
     Success,
+    GameOver,
 }
