@@ -179,13 +179,39 @@ pub fn render_minimap_fb(
     fb: &mut Framebuffer,
     player: &Player,
     grid: &[[u8; MAP_WIDTH]; MAP_HEIGHT],
+    fullscreen: bool,
 ) {
-    let tile_px = 6;
-    let margin = 12;
+    let max_map_dim = MAP_WIDTH.max(MAP_HEIGHT) as i32;
+
+    let (tile_px, origin_x, origin_y, num_rays) = if fullscreen {
+        // Ocupa casi toda la pantalla, centrado, con margen de 20px por lado.
+        let available = (fb.width.min(fb.height) - 40).max(max_map_dim * 2);
+        let tile_px = (available / max_map_dim).max(4);
+        let map_w = MAP_WIDTH as i32 * tile_px;
+        let map_h = MAP_HEIGHT as i32 * tile_px;
+        let origin_x = (fb.width - map_w) / 2;
+        let origin_y = (fb.height - map_h) / 2;
+        (tile_px, origin_x, origin_y, 80)
+    } else {
+        let tile_px = 6;
+        let margin = 12;
+        let map_w = MAP_WIDTH as i32 * tile_px;
+        let origin_x = fb.width - map_w - margin;
+        let origin_y = margin;
+        (tile_px, origin_x, origin_y, 40)
+    };
+
     let map_w = MAP_WIDTH as i32 * tile_px;
     let map_h = MAP_HEIGHT as i32 * tile_px;
-    let origin_x = fb.width - map_w - margin;
-    let origin_y = margin;
+
+    if fullscreen {
+        // Overlay oscuro semitransparente sobre toda la escena 3D para resaltar el mapa.
+        for y in 0..fb.height {
+            for x in 0..fb.width {
+                fb.blend_pixel(x, y, Color::new(0, 0, 0, 190));
+            }
+        }
+    }
 
     fb.fill_rect(
         origin_x - 4,
@@ -213,15 +239,42 @@ pub fn render_minimap_fb(
         }
     }
 
-    let px = origin_x + (player.x * tile_px as f32) as i32;
-    let py = origin_y + (player.y * tile_px as f32) as i32;
-    fb.draw_circle_filled(px, py, 3, Color::YELLOW);
+    // Rayos del FOV proyectados en el minimapa: se re-lanza un subconjunto de rayos
+    // (mismo cast_ray que usa la escena 3D) para dibujar el abanico de visión del jugador.
+    let px_screen = origin_x as f32 + player.x * tile_px as f32;
+    let py_screen = origin_y as f32 + player.y * tile_px as f32;
+
+    for i in 0..num_rays {
+        let t = i as f32 / (num_rays - 1) as f32; // 0.0 .. 1.0
+        let camera_x = 2.0 * t - 1.0; // -1.0 .. 1.0
+        let ray_angle = player.angle + camera_x * (FOV / 2.0);
+
+        let hit = cast_ray(player.x, player.y, ray_angle, grid);
+        let hit_x = player.x + ray_angle.cos() * hit.distance;
+        let hit_y = player.y + ray_angle.sin() * hit.distance;
+
+        let ex = origin_x as f32 + hit_x * tile_px as f32;
+        let ey = origin_y as f32 + hit_y * tile_px as f32;
+
+        fb.draw_line(
+            px_screen as i32,
+            py_screen as i32,
+            ex as i32,
+            ey as i32,
+            Color::new(255, 210, 60, 255),
+        );
+    }
+
+    let dot_radius = ((tile_px as f32) * 0.5).max(3.0) as i32;
+    let dir_len = (tile_px as f32) * 1.5;
+
+    fb.draw_circle_filled(px_screen as i32, py_screen as i32, dot_radius, Color::YELLOW);
     let (dx, dy) = player.dir();
     fb.draw_line(
-        px,
-        py,
-        px + (dx * 10.0) as i32,
-        py + (dy * 10.0) as i32,
-        Color::YELLOW,
+        px_screen as i32,
+        py_screen as i32,
+        (px_screen + dx * dir_len) as i32,
+        (py_screen + dy * dir_len) as i32,
+        Color::RED,
     );
 }

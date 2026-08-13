@@ -1,3 +1,4 @@
+mod audio;
 mod framebuffer;
 mod map;
 mod player;
@@ -8,9 +9,11 @@ mod state;
 mod textures;
 mod weapon;
 
+use audio::AudioManager;
 use framebuffer::Framebuffer;
 use map::get_levels;
 use player::Player;
+use raylib::audio::RaylibAudio;
 use raylib::prelude::*;
 use recorder::GifRecorder;
 use sprite::{render_sprites_fb, AnimatedSprite};
@@ -38,6 +41,9 @@ fn main() {
 
     let mut state = GameState::Welcome;
 
+    let audio = RaylibAudio::init_audio_device().expect("No se pudo inicializar el dispositivo de audio");
+    let mut audio_mgr = AudioManager::new(&audio);
+
     let mut player = Player::new(
         levels[current_level].player_start.0,
         levels[current_level].player_start.1,
@@ -57,9 +63,11 @@ fn main() {
 
     let mut gif_recorder: Option<GifRecorder> = None;
     let mut has_recorded_once = false;
+    let mut minimap_fullscreen = false;
 
     while !rl.window_should_close() {
         let dt = rl.get_frame_time();
+        audio_mgr.update();
 
         match state {
             GameState::Welcome => {
@@ -92,12 +100,16 @@ fn main() {
                     if !has_recorded_once {
                         has_recorded_once = true;
                         gif_recorder = GifRecorder::start("demo.gif", SCREEN_W, SCREEN_H, 12.0, 8.0);
+                        audio_mgr.start_music();
                     }
                 }
             }
             GameState::Playing => {
                 if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
                     state = GameState::LevelSelect;
+                }
+                if rl.is_key_pressed(KeyboardKey::KEY_M) {
+                    minimap_fullscreen = !minimap_fullscreen;
                 }
 
                 update_playing(&mut rl, &mut player, &levels[current_level].grid, dt);
@@ -126,6 +138,7 @@ fn main() {
                 {
                     try_shoot(&player, &mut sprites);
                     weapon.trigger_shot();
+                    audio_mgr.play_shot();
                 }
 
                 let (tx, ty) = player.tile();
@@ -149,9 +162,16 @@ fn main() {
                 &wall_textures,
             );
             render_sprites_fb(&mut framebuffer, &player, &sprites, &zbuffer, &creature_textures);
-            raycasting::render_minimap_fb(&mut framebuffer, &player, &levels[current_level].grid);
-            weapon.draw_fb(&mut framebuffer);
-            weapon::draw_crosshair_fb(&mut framebuffer);
+            raycasting::render_minimap_fb(
+                &mut framebuffer,
+                &player,
+                &levels[current_level].grid,
+                minimap_fullscreen,
+            );
+            if !minimap_fullscreen {
+                weapon.draw_fb(&mut framebuffer);
+                weapon::draw_crosshair_fb(&mut framebuffer);
+            }
             framebuffer.upload();
         }
 
@@ -165,7 +185,7 @@ fn main() {
                 framebuffer.present(&mut d); // UNA sola llamada de dibujo para toda la escena
                 d.draw_fps(10, 10);
                 d.draw_text(
-                    "ESC: menu | WASD: mover | Flechas: rotar | Click/Espacio: disparar",
+                    "ESC: menu | WASD: mover | Flechas: rotar | Click/Espacio: disparar | M: mapa completo",
                     10,
                     SCREEN_H - 24,
                     16,
