@@ -255,7 +255,7 @@ fn update_playing(
     dt: f32,
 ) {
 
-    const MOUSE_SENSITIVITY: f32 = 0.0006;
+    const MOUSE_SENSITIVITY: f32 = 0.0001;
     let center_x = SCREEN_W as f32 / 2.0;
     let center_y = SCREEN_H as f32 / 2.0;
     let mouse_pos = rl.get_mouse_position();
