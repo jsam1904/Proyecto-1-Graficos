@@ -43,12 +43,43 @@ que patrullan el mapa; puedes eliminarlos disparándoles, pero reaparecen a los 
   atravesar paredes.
 - **Máquina de estados**: pantalla de bienvenida → selección de nivel → juego → pantalla de éxito
   (al pisar la casilla de meta) o de *game over* (si un enemigo te atrapa).
-- **Dos niveles** con distinto layout, posición inicial, puntos de spawn y casilla de meta.
+- **Tres niveles** (*Los Pasillos*, *La Arena* y *El Laberinto*) con distinto layout, posición
+  inicial, puntos de spawn y casilla de meta.
+- **Cámara con mouse**: durante la partida el cursor se oculta y se recentra cada frame, así que
+  el ratón gira la vista sin límite de recorrido.
 - **Disparo** con click izquierdo o barra espaciadora: elimina el enemigo vivo más cercano
   dentro de un cono de 0.15 rad y 10 unidades de rango.
 - **Grabador de GIF integrado** (`recorder.rs`): la primera vez que entras a un nivel se
   graba automáticamente `demo.gif` (8 segundos a 12 fps) y arranca la música.
 - Contador de FPS en pantalla (objetivo de 60 FPS con vsync), a 960x540.
+
+### Pantallas
+
+| Bienvenida | Selección de nivel |
+|---|---|
+| ![Pantalla de bienvenida](docs/screenshots/welcome.png) | ![Menú de selección de nivel](docs/screenshots/level-select.png) |
+
+| Nivel completado | Game over |
+|---|---|
+| ![Pantalla de éxito](docs/screenshots/success.png) | ![Pantalla de derrota](docs/screenshots/game-over.png) |
+
+### Niveles
+
+| Nivel 1: Los Pasillos | Nivel 2: La Arena | Nivel 3: El Laberinto |
+|---|---|---|
+| ![Nivel 1](docs/screenshots/level-1.png) | ![Nivel 2](docs/screenshots/level-2.png) | ![Nivel 3](docs/screenshots/level-3.png) |
+
+### Minimapa
+
+| Minimapa en la esquina (con el abanico del FOV) | Mapa a pantalla completa (`M`) |
+|---|---|
+| ![Minimapa](docs/screenshots/minimap.png) | ![Mapa a pantalla completa](docs/screenshots/map-fullscreen.png) |
+
+### Detalles del render
+
+| Paredes texturizadas | Enemigos y sprites | Arma y fogonazo |
+|---|---|---|
+| ![Tipos de pared](docs/screenshots/wall-textures.png) | ![Enemigos](docs/screenshots/enemies.png) | ![Disparo](docs/screenshots/weapon.png) |
 
 ## Requisitos
 
@@ -79,7 +110,7 @@ son relativas al directorio de trabajo.
 |---|---|
 | Avanzar / retroceder | `W` / `S` |
 | Desplazamiento lateral | `A` / `D` |
-| Rotar la cámara | Flechas `←` `→` |
+| Rotar la cámara | Mouse |
 | Disparar | Click izquierdo o `Espacio` |
 | Mapa a pantalla completa | `M` |
 | Continuar (bienvenida) | `Enter` o `Espacio` |
@@ -110,6 +141,9 @@ assets/
 └── audio/
     ├── theme.ogg   # Música de fondo (se reproduce en loop)
     └── shot.wav    # Efecto de sonido del disparo
+
+docs/
+└── screenshots/   # Capturas usadas en la sección "Capturas" de este README
 ```
 
 ### Cómo agregar o editar un nivel
@@ -118,7 +152,7 @@ Los mapas son matrices `[[u8; 16]; 16]` en `src/map.rs`. `0` es piso libre y `1`
 son los tipos de pared (cada número usa una textura distinta, ver `WallTextures::get` en
 `src/textures.rs`). Para agregar un nivel:
 
-1. Define una nueva constante siguiendo el patrón de `LEVEL_1` / `LEVEL_2`.
+1. Define una nueva constante siguiendo el patrón de `LEVEL_1`, `LEVEL_2` o `LEVEL_3`.
 2. Agrégala al `Vec<Level>` que devuelve `get_levels()`, indicando `name`,
    `player_start`, `player_start_angle`, `goal_tile` (la casilla `(col, fila)` que
    dispara la pantalla de éxito al pisarla) y `spawn_points` (las posiciones donde
