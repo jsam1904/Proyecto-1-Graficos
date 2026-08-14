@@ -65,6 +65,7 @@ fn main() {
     let mut gif_recorder: Option<GifRecorder> = None;
     let mut has_recorded_once = false;
     let mut minimap_fullscreen = false;
+    let mut cursor_locked = false;
 
     while !rl.window_should_close() {
         let dt = rl.get_frame_time();
@@ -183,6 +184,17 @@ fn main() {
             }
         }
 
+        let should_lock_cursor = state == GameState::Playing;
+
+        if should_lock_cursor && !cursor_locked {
+            rl.hide_cursor();
+            rl.set_mouse_position(Vector2::new(SCREEN_W as f32 / 2.0, SCREEN_H as f32 / 2.0));
+            cursor_locked = true;
+        } else if !should_lock_cursor && cursor_locked {
+            rl.show_cursor();
+            cursor_locked = false;
+        }
+
         if state == GameState::Playing {
             raycasting::render_scene_fb(
                 &mut framebuffer,
@@ -212,10 +224,10 @@ fn main() {
             GameState::Welcome => draw_welcome(&mut d),
             GameState::LevelSelect => draw_level_select(&mut d, &levels, selected_menu_option),
             GameState::Playing => {
-                framebuffer.present(&mut d); // UNA sola llamada de dibujo para toda la escena
+                framebuffer.present(&mut d);
                 d.draw_fps(10, 10);
                 d.draw_text(
-                    "ESC: menu | WASD: mover | Flechas: rotar | Click/Espacio: disparar | M: mapa completo",
+                    "ESC: menu | WASD: mover | Mouse: rotar | Click/Espacio: disparar | M: mapa completo",
                     10,
                     SCREEN_H - 24,
                     16,
@@ -242,12 +254,16 @@ fn update_playing(
     grid: &[[u8; map::MAP_WIDTH]; map::MAP_HEIGHT],
     dt: f32,
 ) {
-    if rl.is_key_down(KeyboardKey::KEY_LEFT) {
-        player.rotate(-player.rot_speed * dt);
+
+    const MOUSE_SENSITIVITY: f32 = 0.0006;
+    let center_x = SCREEN_W as f32 / 2.0;
+    let center_y = SCREEN_H as f32 / 2.0;
+    let mouse_pos = rl.get_mouse_position();
+    let delta_x = mouse_pos.x - center_x;
+    if delta_x.abs() > 0.5 {
+        player.rotate(delta_x * MOUSE_SENSITIVITY);
     }
-    if rl.is_key_down(KeyboardKey::KEY_RIGHT) {
-        player.rotate(player.rot_speed * dt);
-    }
+    rl.set_mouse_position(Vector2::new(center_x, center_y));
 
     let (dir_x, dir_y) = player.dir();
     let (strafe_x, strafe_y) = (-dir_y, dir_x);
